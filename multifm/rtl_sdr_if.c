@@ -35,6 +35,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
+#include <signal.h>
 
 #ifdef _USE_ARM_NEON
 #include <arm_neon.h>
@@ -56,7 +57,7 @@ aresult_t _rtl_sdr_worker_thread_delete(struct receiver *rx)
 
     thr = BL_CONTAINER_OF(rx, struct rtl_sdr_thread, rx);
 
-    TSL_BUG_ON(0 != rtlsdr_cancel_async(thr->dev));
+    rtlsdr_cancel_async(thr->dev);
 
     if (NULL != thr->dev) {
         DIAG("Releasing RTL-SDR device.");
@@ -68,8 +69,6 @@ aresult_t _rtl_sdr_worker_thread_delete(struct receiver *rx)
         close(thr->dump_fd);
         thr->dump_fd = -1;
     }
-
-    TFREE(thr);
 
     return ret;
 }
@@ -169,6 +168,10 @@ aresult_t _rtl_sdr_worker_thread(struct receiver *rx)
     /* We will turn control of this thread over to libusb/librtlsdr */
     if (0 != (rtl_ret = rtlsdr_read_async(thr->dev, __rtl_sdr_worker_read_async_cb, thr, 0, 0))) {
         MFM_MSG(SEV_WARNING, "UNCLEAN-TERM", "The RTL-SDR Async Reader terminated with an error (%d).", rtl_ret);
+    }
+
+    if (!worker_thread_is_running(&rx->wthr)) {
+        kill(getpid(), SIGTERM);
     }
 
     MFM_MSG(SEV_INFO, "RECEIVER-THREAD-TERMINATED", "Terminating RTL-SDR Receiver thread...");
